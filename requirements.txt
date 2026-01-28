@@ -2,3 +2,7 @@ jax
 jaxlib
 numpy
 pytest
+pillow
+fastapi
+uvicorn
+pydantic
