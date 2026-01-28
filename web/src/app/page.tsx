@@ -8,12 +8,14 @@ interface Sphere {
   color: [number, number, number];
   reflectivity: number;
   roughness: number;
+  transmission: number;
+  ior: number;
 }
 
 export default function Home() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [lightPos, setLightPos] = useState<[number, number, number]>([5.0, 5.0, -5.0]);
+  const [lightPos, setLightPos] = useState<[number, number, number]>([5.0, 10.0, -5.0]);
 
   const [spheres, setSpheres] = useState<Sphere[]>([
     {
@@ -22,6 +24,8 @@ export default function Home() {
       color: [1.0, 0.0, 0.0],
       reflectivity: 0.5,
       roughness: 0.1,
+      transmission: 0.0,
+      ior: 1.0,
     },
     {
       center: [0.0, 0.5, -3.0],
@@ -29,6 +33,8 @@ export default function Home() {
       color: [0.0, 1.0, 0.0],
       reflectivity: 0.5,
       roughness: 0.4,
+      transmission: 0.0,
+      ior: 1.0,
     },
     {
       center: [1.2, 0.5, -3.0],
@@ -36,6 +42,17 @@ export default function Home() {
       color: [0.0, 0.0, 1.0],
       reflectivity: 0.5,
       roughness: 0.05,
+      transmission: 0.0,
+      ior: 1.0,
+    },
+    {
+      center: [0.0, 1.0, -1.5],
+      radius: 1.0,
+      color: [1.0, 0.0, 1.0],
+      reflectivity: 0.1,
+      roughness: 0.05,
+      transmission: 0.75,
+      ior: 1.5,
     },
   ]);
 
@@ -83,11 +100,11 @@ export default function Home() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
       <h1>Avantime Ray Tracer 🐀✨</h1>
 
       <div style={{ display: 'flex', gap: '20px', flexDirection: 'row' }}>
-        <div style={{ flex: 1, minWidth: '300px' }}>
+        <div style={{ flex: 1, minWidth: '400px', overflowY: 'auto', maxHeight: '90vh' }}>
           <h2>Controls</h2>
 
           <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
@@ -118,7 +135,7 @@ export default function Home() {
               </div>
 
               <div style={{ marginBottom: '5px' }}>
-                <label>Roughness (0.0 - 1.0):</label>
+                <label>Roughness (0-1):</label>
                 <input
                   type="range" min="0" max="1" step="0.05"
                   value={sphere.roughness}
@@ -129,7 +146,7 @@ export default function Home() {
               </div>
 
               <div style={{ marginBottom: '5px' }}>
-                <label>Reflectivity (0.0 - 1.0):</label>
+                <label>Reflectivity (0-1):</label>
                 <input
                   type="range" min="0" max="1" step="0.05"
                   value={sphere.reflectivity}
@@ -138,6 +155,44 @@ export default function Home() {
                 />
                 <span> {sphere.reflectivity}</span>
               </div>
+
+              <div style={{ marginBottom: '5px' }}>
+                <label>Transmission (0-1):</label>
+                <input
+                  type="range" min="0" max="1" step="0.05"
+                  value={sphere.transmission}
+                  onChange={(e) => handleSphereChange(idx, 'transmission', parseFloat(e.target.value))}
+                  style={{ marginLeft: '10px' }}
+                />
+                <span> {sphere.transmission}</span>
+              </div>
+
+              <div style={{ marginBottom: '5px' }}>
+                <label>IOR:</label>
+                <input
+                  type="number" step="0.1"
+                  value={sphere.ior}
+                  onChange={(e) => handleSphereChange(idx, 'ior', parseFloat(e.target.value))}
+                  style={{ width: '60px', marginLeft: '10px' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '5px' }}>
+                <label>Radius:</label>
+                <input
+                  type="number" step="0.1"
+                  value={sphere.radius}
+                  onChange={(e) => handleSphereChange(idx, 'radius', parseFloat(e.target.value))}
+                  style={{ width: '60px', marginLeft: '10px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <label>Pos (XYZ):</label>
+                <input type="number" step="0.1" value={sphere.center[0]} onChange={(e) => handleSphereChange(idx, 'center', [parseFloat(e.target.value), sphere.center[1], sphere.center[2]])} style={{width: '50px'}} />
+                <input type="number" step="0.1" value={sphere.center[1]} onChange={(e) => handleSphereChange(idx, 'center', [sphere.center[0], parseFloat(e.target.value), sphere.center[2]])} style={{width: '50px'}} />
+                <input type="number" step="0.1" value={sphere.center[2]} onChange={(e) => handleSphereChange(idx, 'center', [sphere.center[0], sphere.center[1], parseFloat(e.target.value)])} style={{width: '50px'}} />
+              </div>
+
             </div>
           ))}
 
@@ -151,7 +206,8 @@ export default function Home() {
               color: 'white',
               border: 'none',
               borderRadius: '5px',
-              cursor: loading ? 'not-allowed' : 'pointer'
+              cursor: loading ? 'not-allowed' : 'pointer',
+              marginBottom: '20px'
             }}
           >
             {loading ? 'Rendering...' : 'Render Scene'}
@@ -161,7 +217,6 @@ export default function Home() {
         <div style={{ flex: 2, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
           {imageUrl ? (
             <div style={{ border: '2px solid #333' }}>
-              {/* Using native img tag for blob URL, simpler than next/image configuration for local blob */}
               <img src={imageUrl} alt="Rendered Scene" style={{ maxWidth: '100%', height: 'auto' }} />
             </div>
           ) : (
