@@ -35,7 +35,7 @@ static PyMethodDef ExtensionMethods[] = {
 static struct PyModuleDef extensionmodule = {
     PyModuleDef_HEAD_INIT,
     "_extensions",
-    "Internal C++ extensions for Avantime Rat Tracer",
+    "Internal C++ extensions for Avantime Ray Tracer",
     -1,
     ExtensionMethods
 };
