@@ -45,15 +45,6 @@ export default function Home() {
       transmission: 0.0,
       ior: 1.0,
     },
-    {
-      center: [0.0, 1.0, -1.5],
-      radius: 1.0,
-      color: [1.0, 0.0, 1.0],
-      reflectivity: 0.1,
-      roughness: 0.05,
-      transmission: 0.75,
-      ior: 1.5,
-    },
   ]);
 
   const handleSphereChange = (index: number, field: keyof Sphere, value: any) => {
