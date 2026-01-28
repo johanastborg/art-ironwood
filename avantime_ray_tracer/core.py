@@ -209,8 +209,6 @@ def render_scene(scene_dict=None, samples=1):
             [-1.2, 0.5, -3.0, 0.5, 1.0, 0.0, 0.0, 0.5, 0.1, 0.0, 1.0], # Red, shiny
             [ 0.0, 0.5, -3.0, 0.5, 0.0, 1.0, 0.0, 0.5, 0.4, 0.0, 1.0], # Green, rougher
             [ 1.2, 0.5, -3.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.05, 0.0, 1.0], # Blue, very shiny
-            # New Magenta Glass Sphere
-            [ 0.0, 1.0, -1.5, 1.0, 1.0, 0.0, 1.0, 0.1, 0.05, 0.75, 1.5], # Magenta, Large, Transparent
         ])
         # Plane: x, y, z (point), nx, ny, nz (normal)
         plane = jnp.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
