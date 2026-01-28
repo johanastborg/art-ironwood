@@ -38,6 +38,31 @@ def get_checkerboard_color(hit_point):
     is_white = (u + v) % 2 == 0
     return jnp.where(is_white, jnp.array([1.0, 1.0, 1.0]), jnp.array([0.0, 0.0, 0.0]))
 
+def eval_brdf(normal, view_dir, light_dir, albedo, roughness):
+    """
+    Evaluates a simple BRDF (Diffuse + Blinn-Phong Specular).
+    """
+    # Diffuse (Lambertian)
+    NdotL = jnp.maximum(0.0, jnp.dot(normal, light_dir))
+    diffuse = albedo * NdotL
+
+    # Specular (Blinn-Phong)
+    half_vec = normalize(light_dir + view_dir)
+    NdotH = jnp.maximum(0.0, jnp.dot(normal, half_vec))
+
+    # Map roughness (0-1) to shininess (1-100+)
+    # Roughness 0 -> Shininess 500 (Sharp)
+    # Roughness 1 -> Shininess 1 (Dull)
+    shininess = 500.0 * (1.0 - roughness) + 1.0
+
+    spec_intensity = jnp.power(NdotH, shininess)
+
+    # Simple Fresnel approximation (Schlick) could be added here,
+    # but strictly Blinn-Phong is just intensity.
+    specular = jnp.array([1.0, 1.0, 1.0]) * spec_intensity * (1.0 - roughness) # Scale by smoothness
+
+    return diffuse + specular
+
 def trace(ray_origin, ray_dir, scene, depth, key):
     if depth == 0:
         return jnp.array([0.0, 0.0, 0.0])
@@ -67,15 +92,19 @@ def trace(ray_origin, ray_dir, scene, depth, key):
             normal = normalize(hit_point - s[:3])
             albedo = s[4:7]
             reflectivity = s[7]
-            return normal, albedo, reflectivity
+            # Assumes spheres now have roughness at index 8. If not present (old scene data), default to 0.1
+            # But JAX array must be fixed size. We will update scene generation.
+            roughness = s[8]
+            return normal, albedo, reflectivity, roughness
 
         def get_plane_data(idx):
             normal = plane[3:6]
             albedo = get_checkerboard_color(hit_point)
             reflectivity = 0.3
-            return normal, albedo, reflectivity
+            roughness = 0.5 # Floor is somewhat rough
+            return normal, albedo, reflectivity, roughness
 
-        normal, albedo, reflectivity = jax.lax.cond(
+        normal, albedo, reflectivity, roughness = jax.lax.cond(
             hit_obj == 1,
             lambda: get_sphere_data(closest_sphere_idx),
             lambda: get_plane_data(0)
@@ -86,16 +115,11 @@ def trace(ray_origin, ray_dir, scene, depth, key):
         shadow_sphere_dists = jax.vmap(lambda s: sphere_intersect(s[:3], s[3], hit_point, to_light))(spheres)
         in_shadow = jnp.min(shadow_sphere_dists) < jnp.linalg.norm(light_pos - hit_point)
 
-        diffuse_intensity = jnp.maximum(0.0, jnp.dot(normal, to_light))
-        diffuse = jax.lax.select(in_shadow, jnp.array([0.0, 0.0, 0.0]), albedo * diffuse_intensity)
-
+        # BRDF Evaluation
         view_dir = -ray_dir
-        half_vec = normalize(to_light + view_dir)
+        brdf_color = eval_brdf(normal, view_dir, to_light, albedo, roughness)
 
-        spec_intensity = jnp.power(jnp.maximum(0.0, jnp.dot(normal, half_vec)), 50.0)
-        specular = jax.lax.select(in_shadow, jnp.array([0.0, 0.0, 0.0]), jnp.array([1.0, 1.0, 1.0]) * spec_intensity * 0.5)
-
-        local_color = diffuse + specular
+        local_color = jax.lax.select(in_shadow, jnp.array([0.0, 0.0, 0.0]), brdf_color)
 
         # Reflection
         reflect_dir = normalize(ray_dir - 2.0 * jnp.dot(ray_dir, normal) * normal)
@@ -114,13 +138,14 @@ def render_scene(scene_dict=None, samples=1):
     """
     if scene_dict is None:
         # Default scene definition
-        # Spheres: x, y, z, r, r_col, g_col, b_col, reflectivity
+        # Spheres: x, y, z, r, r_col, g_col, b_col, reflectivity, roughness
         spheres = jnp.array([
-            [-1.2, 0.5, -3.0, 0.5, 1.0, 0.0, 0.0, 0.5], # Red
-            [ 0.0, 0.5, -3.0, 0.5, 0.0, 1.0, 0.0, 0.5], # Green
-            [ 1.2, 0.5, -3.0, 0.5, 0.0, 0.0, 1.0, 0.5], # Blue
+            [-1.2, 0.5, -3.0, 0.5, 1.0, 0.0, 0.0, 0.5, 0.1], # Red, shiny
+            [ 0.0, 0.5, -3.0, 0.5, 0.0, 1.0, 0.0, 0.5, 0.4], # Green, rougher
+            [ 1.2, 0.5, -3.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.05], # Blue, very shiny
         ])
         # Plane: x, y, z (point), nx, ny, nz (normal)
+        # Note: Plane data structure remains same for now as we hardcode roughness in get_plane_data
         plane = jnp.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
 
         scene_dict = {
