@@ -28,6 +28,8 @@ class Sphere(BaseModel):
     color: list[float]
     reflectivity: float
     roughness: float
+    transmission: float
+    ior: float
 
 class SceneRequest(BaseModel):
     spheres: list[Sphere]
@@ -43,22 +45,24 @@ def render(request: SceneRequest):
         # Construct scene dictionary
         spheres_data = []
         for s in request.spheres:
-            # x, y, z, r, r_col, g_col, b_col, refl, rough
+            # x, y, z, r, r_col, g_col, b_col, refl, rough, trans, ior
             spheres_data.append([
                 s.center[0], s.center[1], s.center[2],
                 s.radius,
                 s.color[0], s.color[1], s.color[2],
                 s.reflectivity,
-                s.roughness
+                s.roughness,
+                s.transmission,
+                s.ior
             ])
 
         spheres_array = jnp.array(spheres_data)
 
-        # Hardcoded plane for now, as in default demo
+        # Hardcoded plane for now
         plane_array = jnp.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
 
         light_pos = jnp.array(request.light_pos)
-        light_color = jnp.array([1.0, 1.0, 1.0])
+        light_color = jnp.array([1.5, 1.5, 1.5]) # Match default scene intensity
 
         scene = {
             'spheres': spheres_array,
@@ -74,7 +78,7 @@ def render(request: SceneRequest):
         # Convert to PNG
         image_data = (image_data * 255).astype(jnp.uint8)
         # JAX array to numpy for PIL
-        image_np =  image_data.__array__() # Force conversion to numpy
+        image_np =  image_data.__array__()
 
         img = Image.fromarray(image_np, 'RGB')
 
