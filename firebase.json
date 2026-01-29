@@ -1,0 +1,15 @@
+{
+  "apphosting": {
+    "backendId": "art-web",
+    "rootDir": "web",
+    "ignore": [
+      "node_modules",
+      "web/node_modules",
+      "web/.next",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "functions"
+    ]
+  }
+}

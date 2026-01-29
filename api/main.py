@@ -34,6 +34,9 @@ class Sphere(BaseModel):
 class SceneRequest(BaseModel):
     spheres: list[Sphere]
     light_pos: list[float]
+    light_intensity: float = 1.5
+    camera_origin: list[float] | None = None
+    camera_target: list[float] | None = None
 
 @app.get("/")
 def read_root():
@@ -62,7 +65,9 @@ def render(request: SceneRequest):
         plane_array = jnp.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
 
         light_pos = jnp.array(request.light_pos)
-        light_color = jnp.array([1.5, 1.5, 1.5]) # Match default scene intensity
+        # Use requested intensity
+        val = request.light_intensity
+        light_color = jnp.array([val, val, val])
 
         scene = {
             'spheres': spheres_array,
@@ -73,7 +78,12 @@ def render(request: SceneRequest):
             }
         }
 
-        image_data = render_scene(scene, samples=1)
+        image_data = render_scene(
+            scene, 
+            samples=1, 
+            camera_origin=request.camera_origin,
+            camera_target=request.camera_target
+        )
 
         # Convert to PNG
         image_data = (image_data * 255).astype(jnp.uint8)

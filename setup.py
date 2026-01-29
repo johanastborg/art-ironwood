@@ -5,7 +5,7 @@ import os
 module = Extension(
     'avantime_ray_tracer._extensions',
     sources=['src/extension.cpp'],
-    extra_compile_args=['-std=c++98'],  # Ensure C++98 compliance
+    extra_compile_args=['-std=c++11'],  # Ensure C++11 compliance
     language='c++'
 )
 

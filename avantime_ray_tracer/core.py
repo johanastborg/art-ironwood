@@ -128,6 +128,11 @@ def trace(ray_origin, ray_dir, scene, depth, key):
         # BRDF Evaluation (for non-transmitted part)
         view_dir = -ray_dir
         brdf_color = eval_brdf(normal, view_dir, to_light, albedo, roughness)
+        
+        # Apply light color/intensity
+        light_color = scene['light']['color']
+        brdf_color = brdf_color * light_color
+
         local_color = jax.lax.select(in_shadow, jnp.array([0.0, 0.0, 0.0]), brdf_color)
 
         # Reflection
@@ -198,7 +203,7 @@ def trace(ray_origin, ray_dir, scene, depth, key):
 
     return jax.lax.cond(hit_dist == jnp.inf, lambda: jnp.array([0.0, 0.0, 0.0]), perform_shading)
 
-def render_scene(scene_dict=None, samples=1):
+def render_scene(scene_dict=None, samples=1, camera_origin=None, camera_target=None):
     """
     Renders the scene. If scene_dict is None, uses the default "basic scene".
     """
@@ -236,14 +241,16 @@ def render_scene(scene_dict=None, samples=1):
     uv_y = ((HEIGHT - y) / HEIGHT) * 2.0 - 1.0
     uv_x *= aspect_ratio
 
-    # Camera pos and dir - Zoomed in
-    # Original Origin: [0.0, 1.5, 1.0], Target: [0.0, 0.5, -3.0]
-    # Move closer: Origin: [0.0, 1.0, -1.0] ?
-    origin = jnp.array([0.0, 1.0, 1.0]) # Moved down and keep z
-    target = jnp.array([0.0, 0.5, -3.0])
+    # Camera pos and dir
+    if camera_origin is None:
+        origin = jnp.array([0.0, 0.8, -0.5])
+    else:
+        origin = jnp.array(camera_origin)
 
-    # Zoom by changing FOV or moving origin. Let's move origin closer to z=-3
-    origin = jnp.array([0.0, 0.8, -0.5])
+    if camera_target is None:
+        target = jnp.array([0.0, 0.5, -3.0])
+    else:
+        target = jnp.array(camera_target)
 
     cam_forward = normalize(target - origin)
     cam_right = normalize(jnp.cross(cam_forward, jnp.array([0.0, 1.0, 0.0])))

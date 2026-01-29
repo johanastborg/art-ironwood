@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import * as THREE from 'three';
 
 interface Sphere {
   center: [number, number, number];
@@ -12,12 +15,61 @@ interface Sphere {
   ior: number;
 }
 
+function SceneContent({
+  spheres,
+  onInteractionStart,
+  onInteractionEnd
+}: {
+  spheres: Sphere[],
+  onInteractionStart: () => void,
+  onInteractionEnd: (cam: THREE.Camera, target: THREE.Vector3) => void
+}) {
+  const controlsRef = useRef<any>(null);
+
+  return (
+    <>
+      <ambientLight intensity={0.5} />
+      <pointLight position={[5.0, 10.0, -5.0]} intensity={1.5} />
+
+      <OrbitControls
+        ref={controlsRef}
+        onStart={onInteractionStart}
+        onEnd={() => onInteractionEnd(controlsRef.current.object, controlsRef.current.target)}
+        target={[0.0, 0.5, -3.0]}
+      />
+
+      <PerspectiveCamera makeDefault position={[0.0, 0.8, -0.5]} fov={75} />
+
+      {/* Plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[20, 20]} />
+        <meshStandardMaterial color="gray" wireframe />
+      </mesh>
+
+      {/* Spheres */}
+      {spheres.map((s, idx) => (
+        <mesh key={idx} position={s.center}>
+          <sphereGeometry args={[s.radius, 32, 32]} />
+          <meshStandardMaterial
+            color={new THREE.Color(s.color[0], s.color[1], s.color[2])}
+            wireframe
+          />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 export default function Home() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [lightPos, setLightPos] = useState<[number, number, number]>([5.0, 10.0, -5.0]);
+  const [isInteracting, setIsInteracting] = useState(false);
 
-  const [spheres, setSpheres] = useState<Sphere[]>([
+  // State for rendering, though we don't show controls anymore
+  const [lightPos] = useState<[number, number, number]>([5.0, 10.0, -5.0]);
+  const [lightIntensity] = useState<number>(1.5);
+
+  const [spheres] = useState<Sphere[]>([
     {
       center: [-1.2, 0.5, -3.0],
       radius: 0.5,
@@ -56,24 +108,11 @@ export default function Home() {
     },
   ]);
 
-  const handleSphereChange = (index: number, field: keyof Sphere, value: any) => {
-    const newSpheres = [...spheres];
-    newSpheres[index] = { ...newSpheres[index], [field]: value };
-    setSpheres(newSpheres);
-  };
-
-  const handleColorChange = (index: number, channel: number, val: number) => {
-    const newSpheres = [...spheres];
-    const newColor = [...newSpheres[index].color] as [number, number, number];
-    newColor[channel] = val;
-    newSpheres[index] = { ...newSpheres[index], color: newColor };
-    setSpheres(newSpheres);
-  };
-
-  const renderScene = async () => {
+  const fetchRender = async (cameraOrigin: number[], cameraTarget: number[]) => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/render', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/render`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -81,6 +120,9 @@ export default function Home() {
         body: JSON.stringify({
           spheres: spheres,
           light_pos: lightPos,
+          light_intensity: lightIntensity,
+          camera_origin: cameraOrigin,
+          camera_target: cameraTarget
         }),
       });
 
@@ -99,133 +141,89 @@ export default function Home() {
     }
   };
 
+  const handleInteractionStart = () => {
+    setIsInteracting(true);
+  };
+
+  const handleInteractionEnd = (camera: THREE.Camera, target: THREE.Vector3) => {
+    setIsInteracting(false);
+
+    // Convert camera position and target to arrays for API
+    const origin = [camera.position.x, camera.position.y, camera.position.z];
+    const targetArr = [target.x, target.y, target.z];
+
+    fetchRender(origin, targetArr);
+  };
+
+  // Initial render on mount with default camera
+  useEffect(() => {
+    fetchRender([0.0, 0.8, -0.5], [0.0, 0.5, -3.0]);
+  }, []);
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
-      <h1>Avantime Ray Tracer 🐀✨</h1>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', backgroundColor: '#111' }}>
 
-      <div style={{ display: 'flex', gap: '20px', flexDirection: 'row' }}>
-        <div style={{ flex: 1, minWidth: '400px', overflowY: 'auto', maxHeight: '90vh' }}>
-          <h2>Controls</h2>
+      {/* 3D Wireframe Scene (Always active for interaction, but obscured by image when idle) */}
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+        <Canvas>
+          <Suspense fallback={null}>
+            <SceneContent
+              spheres={spheres}
+              onInteractionStart={handleInteractionStart}
+              onInteractionEnd={handleInteractionEnd}
+            />
+          </Suspense>
+        </Canvas>
+      </div>
 
-          <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
-            <h3>Light Position</h3>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <label>X: <input type="number" step="0.1" value={lightPos[0]} onChange={(e) => setLightPos([parseFloat(e.target.value), lightPos[1], lightPos[2]])} style={{width: '60px'}} /></label>
-              <label>Y: <input type="number" step="0.1" value={lightPos[1]} onChange={(e) => setLightPos([lightPos[0], parseFloat(e.target.value), lightPos[2]])} style={{width: '60px'}} /></label>
-              <label>Z: <input type="number" step="0.1" value={lightPos[2]} onChange={(e) => setLightPos([lightPos[0], lightPos[1], parseFloat(e.target.value)])} style={{width: '60px'}} /></label>
-            </div>
-          </div>
-
-          {spheres.map((sphere, idx) => (
-            <div key={idx} style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
-              <h3>Sphere {idx + 1}</h3>
-
-              <div style={{ marginBottom: '10px' }}>
-                <label>Color (RGB):</label><br/>
-                <div style={{ display: 'flex', gap: '5px' }}>
-                   <input type="number" step="0.1" min="0" max="1" value={sphere.color[0]} onChange={(e) => handleColorChange(idx, 0, parseFloat(e.target.value))} style={{width: '50px'}} />
-                   <input type="number" step="0.1" min="0" max="1" value={sphere.color[1]} onChange={(e) => handleColorChange(idx, 1, parseFloat(e.target.value))} style={{width: '50px'}} />
-                   <input type="number" step="0.1" min="0" max="1" value={sphere.color[2]} onChange={(e) => handleColorChange(idx, 2, parseFloat(e.target.value))} style={{width: '50px'}} />
-                   <div style={{
-                     width: '20px', height: '20px',
-                     backgroundColor: `rgb(${sphere.color[0]*255}, ${sphere.color[1]*255}, ${sphere.color[2]*255})`,
-                     border: '1px solid #000'
-                   }}></div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '5px' }}>
-                <label>Roughness (0-1):</label>
-                <input
-                  type="range" min="0" max="1" step="0.05"
-                  value={sphere.roughness}
-                  onChange={(e) => handleSphereChange(idx, 'roughness', parseFloat(e.target.value))}
-                  style={{ marginLeft: '10px' }}
-                />
-                <span> {sphere.roughness}</span>
-              </div>
-
-              <div style={{ marginBottom: '5px' }}>
-                <label>Reflectivity (0-1):</label>
-                <input
-                  type="range" min="0" max="1" step="0.05"
-                  value={sphere.reflectivity}
-                  onChange={(e) => handleSphereChange(idx, 'reflectivity', parseFloat(e.target.value))}
-                  style={{ marginLeft: '10px' }}
-                />
-                <span> {sphere.reflectivity}</span>
-              </div>
-
-              <div style={{ marginBottom: '5px' }}>
-                <label>Transmission (0-1):</label>
-                <input
-                  type="range" min="0" max="1" step="0.05"
-                  value={sphere.transmission}
-                  onChange={(e) => handleSphereChange(idx, 'transmission', parseFloat(e.target.value))}
-                  style={{ marginLeft: '10px' }}
-                />
-                <span> {sphere.transmission}</span>
-              </div>
-
-              <div style={{ marginBottom: '5px' }}>
-                <label>IOR:</label>
-                <input
-                  type="number" step="0.1"
-                  value={sphere.ior}
-                  onChange={(e) => handleSphereChange(idx, 'ior', parseFloat(e.target.value))}
-                  style={{ width: '60px', marginLeft: '10px' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '5px' }}>
-                <label>Radius:</label>
-                <input
-                  type="number" step="0.1"
-                  value={sphere.radius}
-                  onChange={(e) => handleSphereChange(idx, 'radius', parseFloat(e.target.value))}
-                  style={{ width: '60px', marginLeft: '10px' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '5px' }}>
-                <label>Pos (XYZ):</label>
-                <input type="number" step="0.1" value={sphere.center[0]} onChange={(e) => handleSphereChange(idx, 'center', [parseFloat(e.target.value), sphere.center[1], sphere.center[2]])} style={{width: '50px'}} />
-                <input type="number" step="0.1" value={sphere.center[1]} onChange={(e) => handleSphereChange(idx, 'center', [sphere.center[0], parseFloat(e.target.value), sphere.center[2]])} style={{width: '50px'}} />
-                <input type="number" step="0.1" value={sphere.center[2]} onChange={(e) => handleSphereChange(idx, 'center', [sphere.center[0], sphere.center[1], parseFloat(e.target.value)])} style={{width: '50px'}} />
-              </div>
-
-            </div>
-          ))}
-
-          <button
-            onClick={renderScene}
-            disabled={loading}
-            style={{
-              padding: '10px 20px',
-              fontSize: '16px',
-              backgroundColor: loading ? '#ccc' : '#0070f3',
+      {/* HQ Render Overlay */}
+      {imageUrl && !isInteracting && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 2,
+            pointerEvents: 'none', // Allow clicks to pass through to Canvas
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundImage: `url(${imageUrl})`,
+            backgroundSize: 'cover', // Or contain? 'cover' essentially fills the screen
+            backgroundPosition: 'center',
+          }}
+        >
+          {loading && (
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(0,0,0,0.7)',
               color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              marginBottom: '20px'
-            }}
-          >
-            {loading ? 'Rendering...' : 'Render Scene'}
-          </button>
-        </div>
-
-        <div style={{ flex: 2, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
-          {imageUrl ? (
-            <div style={{ border: '2px solid #333' }}>
-              <img src={imageUrl} alt="Rendered Scene" style={{ maxWidth: '100%', height: 'auto' }} />
+              padding: '10px',
+              borderRadius: '4px'
+            }}>
+              Rendering...
             </div>
-          ) : (
-             <div style={{ width: '800px', height: '600px', backgroundColor: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-               <p>No render yet. Click "Render Scene".</p>
-             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Loading indicator when first loading or rendering without previous image */}
+      {loading && !imageUrl && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: 'white',
+          zIndex: 3
+        }}>
+          Rendering initial scene...
+        </div>
+      )}
     </div>
   );
 }
